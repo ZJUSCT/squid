@@ -270,9 +270,21 @@ HttpReply::recreateOnNotModified(const HttpReply &reply304) const
         return nullptr;
 
     const Pointer cloned = clone();
+    const int64_t originalContentLength = content_length;
+
     cloned->header.update(&reply304.header);
     cloned->hdrCacheClean();
     cloned->header.compact();
+
+    // Preserve Content-Length from original cached response if 304 lacks it.
+    // Per RFC 7232 Section 4.1, 304 responses MUST NOT contain a message-body,
+    // so they don't include Content-Length. However, the cached body content
+    // hasn't changed during revalidation, so Content-Length must be preserved
+    // to avoid header-body inconsistency.
+    if (!reply304.header.has(Http::HdrType::CONTENT_LENGTH) && originalContentLength >= 0) {
+        cloned->header.putInt64(Http::HdrType::CONTENT_LENGTH, originalContentLength);
+    }
+
     cloned->hdrCacheInit();
     return cloned;
 }
